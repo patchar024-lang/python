@@ -1,0 +1,786 @@
+import tkinter as tk
+
+
+WIDTH = 1100
+HEIGHT = 700
+GROUND_Y = 600
+
+
+class SplitSecond:
+	def __init__(self):
+		self.root = tk.Tk()
+		self.root.title("Split Second - Parkour Run")
+		self.root.resizable(False, False)
+		self.canvas = tk.Canvas(self.root, width=WIDTH, height=HEIGHT,
+							bg="#10182e", highlightthickness=0)
+		self.canvas.configure(bg="#10182e")
+		self.canvas.pack()
+		self.keys = set()
+		self.touch_keys = set()
+		self.mouse_down_state = False
+		self.started = False
+		self.finished = False
+		self.last_time = 0
+		self.slide_timer = 0.0
+		self.slide_combo_active = False
+		self.mouse_locked = False
+		self.look_y = 0.0
+		self.last_mouse_y = HEIGHT / 2
+		self.jump_notice_timer = 0.0
+		self.death_animation_timer = 0.0
+		self.total_coins = 0
+		self.current_level = 1
+		self.selected_level = 1
+		self.level_names = {
+			1: "SUNSET START",
+			2: "LASER CANYON",
+			3: "FINAL GAUNTLET",
+			4: "FROSTBITE HEIGHTS",
+			5: "COSMIC VOID",
+		}
+		self.shop_open = False
+		self.selected_avatar = "classic"
+		self.unlocked_avatars = {"classic"}
+		self.unlocked_accessories = set()
+		self.selected_accessories = set()
+		self.accessories = {
+			"double_jump": ("DOUBLE JUMP SHOES", 100),
+			"gravity": ("GRAVITY SHOES", 150),
+		}
+		self.avatars = {
+			"classic": ("CLASSIC", 0, "#3f9fe8", "#263b63"),
+			"ninja": ("NINJA", 15, "#e85d75", "#24243a"),
+			"robot": ("ROBOT", 30, "#a9b7c6", "#58677a"),
+			"gold": ("GOLD", 50, "#f5b942", "#a96327"),
+		}
+		self.reset()
+		self.root.bind("<KeyPress>", self.key_down)
+		self.root.bind("<KeyRelease>", self.key_up)
+		self.root.bind("<ButtonPress-1>", self.mouse_down)
+		self.root.bind("<ButtonRelease-1>", self.mouse_up)
+		self.root.bind("<Motion>", self.mouse_move)
+		self.root.bind("<space>", self.start_or_jump)
+		self.root.bind("<Return>", self.start_or_jump)
+		self.draw_welcome()
+		self.root.after(16, self.loop)
+
+	def reset(self):
+		self.player = {"x": 100.0, "y": 500.0, "vx": 0.0, "vy": 0.0,
+					   "w": 30, "h": 48, "grounded": False, "jumps": 0}
+		self.camera_x = 0.0
+		self.checkpoint = 100.0
+		self.checkpoint_y = GROUND_Y
+		self.elapsed = 0.0
+		self.finished = False
+		self.slide_timer = 0.0
+		self.slide_combo_active = False
+		self.look_y = 0.0
+		self.jump_notice_timer = 0.0
+		self.death_notice_timer = 0.0
+		self.death_notice_text = ""
+		self.death_animation_timer = 0.0
+		self.laser_immunity_timer = 0.0
+		self.reward_timer = 0.0
+		self.reward_speed_timer = 0.0
+		self.laser_immunity_timer = 0.0
+		self.reward_timer = 0.0
+		self.reward_speed_timer = 0.0
+		self.coins_collected = self.total_coins
+		self.coins = [(180, 560), (430, 455), (760, 430), (980, 355),
+			(1215, 440), (1435, 355), (1685, 440), (1910, 315),
+			(2150, 420), (2425, 355), (2635, 265), (2890, 410),
+			(3135, 315), (3560, 410), (3800, 300), (4250, 560),
+			(4345, 435), (4545, 325), (4825, 415), (5095, 295),
+			(5480, 425), (5665, 315), (5960, 560), (6060, 385),
+			(6690, 415), (6925, 295), (7195, 395), (7440, 560)]
+		self.reward_text = ""
+		self.platforms = [(0, 600, 550, 100), (650, 600, 360, 100),
+			(1110, 600, 400, 100), (1610, 600, 460, 100),
+			(2180, 600, 450, 100), (2720, 600, 520, 100),
+			(3320, 600, 720, 100), (420, 490, 130, 20),
+			(730, 465, 150, 20), (950, 390, 130, 20),
+			(1190, 480, 140, 20), (1400, 390, 130, 20),
+			(1640, 480, 140, 20), (1870, 350, 150, 20),
+			(2120, 460, 120, 20), (2390, 390, 140, 20),
+			(2600, 300, 150, 20), (2860, 450, 150, 20),
+			(3100, 350, 140, 20), (3520, 450, 150, 20),
+			(3770, 340, 160, 20), (4150, 600, 420, 100),
+			(4680, 600, 470, 100), (5280, 600, 420, 100),
+			(5830, 600, 700, 100), (4310, 470, 140, 20),
+			(4510, 360, 140, 20), (4820, 450, 150, 20),
+			(5060, 330, 140, 20), (5410, 460, 130, 20),
+			(5630, 350, 150, 20), (6020, 420, 160, 20),
+			(6500, 600, 430, 100), (7050, 600, 650, 100),
+			(6680, 450, 150, 20), (6910, 330, 150, 20),
+			(7190, 430, 160, 20)]
+		self.hazards = [(550, 650), (1010, 1110), (1510, 1610),
+			(2070, 2180), (2630, 2720), (3240, 3320),
+			(4040, 4150), (4570, 4680), (5150, 5280), (5700, 5830)]
+		self.traps = [(300, 55), (820, 55), (1270, 55), (1770, 55),
+			(2320, 55), (2900, 55), (3470, 55), (3850, 55),
+			(4250, 55), (4770, 55), (5350, 55), (5920, 55), (6160, 55),
+			(6620, 55), (7140, 55)]
+		self.lasers = [(470, GROUND_Y, 18), (790, 465, 16),
+			(1320, 480, 16), (1810, GROUND_Y, 20), (2440, 390, 16),
+			(2990, GROUND_Y, 20), (3560, 450, 16), (3920, 340, 16),
+			(4250, GROUND_Y, 20), (4870, GROUND_Y, 20), (5100, 330, 16),
+			(5480, 460, 16), (5950, GROUND_Y, 20), (6760, 450, 16),
+			(7240, 430, 16)]
+		self.checkpoints = [(100, 600), (1190, 480), (2390, 390),
+			(3320, 600), (4310, 470), (5060, 330), (5830, 600),
+			(6680, 450), (7050, 600)]
+		self.finish_x = 7650
+		if self.current_level >= 2:
+			self.traps += [(4400, 55), (5000, 55), (5560, 55), (6810, 55), (7320, 55)]
+			self.lasers += [(4430, GROUND_Y, 18), (5015, GROUND_Y, 18), (6780, GROUND_Y, 16)]
+		if self.current_level >= 3:
+			self.traps += [(900, 55), (1520, 55), (2160, 55), (2780, 55), (3380, 55), (4680, 55), (5800, 55)]
+			self.lasers += [(920, GROUND_Y, 16), (1540, GROUND_Y, 16), (2800, GROUND_Y, 16), (4700, GROUND_Y, 16), (5820, GROUND_Y, 16)]
+		if self.current_level >= 4:
+			self.traps += [(680, 55), (1160, 55), (2410, 55), (3650, 55), (4380, 55), (5480, 55), (7000, 55)]
+			self.lasers += [(700, GROUND_Y, 14), (1180, GROUND_Y, 14), (2430, GROUND_Y, 14), (3670, GROUND_Y, 14), (4400, GROUND_Y, 14), (5500, GROUND_Y, 14), (7020, GROUND_Y, 14)]
+		if self.current_level >= 5:
+			self.traps += [(360, 55), (1060, 55), (1980, 55), (3060, 55), (4200, 55), (5200, 55), (6300, 55), (7500, 55)]
+			self.lasers += [(380, GROUND_Y, 12), (1080, GROUND_Y, 12), (2000, GROUND_Y, 12), (3080, GROUND_Y, 12), (4220, GROUND_Y, 12), (5220, GROUND_Y, 12), (6320, GROUND_Y, 12), (7520, GROUND_Y, 12)]
+		checkpoint_platforms = []
+		for checkpoint_x, checkpoint_y in self.checkpoints:
+			for platform_x, platform_y, platform_width, platform_height in self.platforms:
+				if platform_x <= checkpoint_x <= platform_x + platform_width and platform_y == checkpoint_y:
+					checkpoint_platforms.append((platform_x, platform_x + platform_width))
+		self.lasers = [
+			laser for laser in self.lasers
+			if not any(platform_start <= laser[0] <= platform_end
+					   for platform_start, platform_end in checkpoint_platforms)
+		]
+		valid_coins = []
+		for coin_x, coin_y in self.coins:
+			on_trap = any(trap_x - 18 <= coin_x <= trap_x + trap_width + 18
+						 for trap_x, trap_width in self.traps)
+			on_gap = any(hazard_start - 18 <= coin_x <= hazard_end + 18
+					 for hazard_start, hazard_end in self.hazards)
+			on_laser = any(abs(coin_x - laser_x) <= laser_radius + 18 and
+							laser_y - laser_radius - 30 <= coin_y <= laser_y + 18
+						 for laser_x, laser_y, laser_radius in self.lasers)
+			supported = any(platform_x - 18 <= coin_x <= platform_x + platform_width + 18 and
+							0 < platform_y - coin_y <= 130
+							for platform_x, platform_y, platform_width, platform_height in self.platforms)
+			if supported and not on_trap and not on_gap and not on_laser:
+				valid_coins.append((coin_x, coin_y))
+		self.coins = valid_coins
+
+	def respawn_at_checkpoint(self, reason="SPIKED!"):
+		self.player["x"] = self.checkpoint + 10
+		self.player["y"] = self.checkpoint_y - self.player["h"]
+		self.player["vy"] = 0
+		self.player["grounded"] = False
+		self.death_notice_timer = 0.65
+		self.death_animation_timer = 0.65
+		self.laser_immunity_timer = 1.0
+		self.death_notice_text = reason
+
+	def key_down(self, event):
+		key = event.keysym.lower()
+		if key == "t" and key not in self.keys:
+			self.mouse_locked = not self.mouse_locked
+			self.root.config(cursor="none" if self.mouse_locked else "")
+		if key == "space" and key not in self.keys:
+			self.start_or_jump()
+		if key == "d" and key not in self.keys and self.started and not self.shop_open:
+			self.player["vx"] = 18
+		self.keys.add(key)
+		if key == "r":
+			self.reset()
+			self.started = True
+		if not self.started and key in ("left", "right"):
+			self.selected_level += 1 if key == "right" else -1
+			self.selected_level = max(1, min(5, self.selected_level))
+		if key == "b":
+			self.shop_open = not self.shop_open
+		if (self.shop_open or not self.started) and key in ("1", "2", "3", "4"):
+			self.shop_action(int(key) - 1)
+		if (self.shop_open or not self.started) and key in ("5", "6"):
+			self.accessory_action(int(key) - 5)
+
+	def shop_action(self, avatar_index):
+		avatar_key = list(self.avatars)[avatar_index]
+		avatar_name, price, body_color, pants_color = self.avatars[avatar_key]
+		if avatar_key in self.unlocked_avatars:
+			self.selected_avatar = avatar_key
+		elif self.total_coins >= price:
+			self.total_coins -= price
+			self.coins_collected = self.total_coins
+			self.unlocked_avatars.add(avatar_key)
+			self.selected_avatar = avatar_key
+			self.reward_text = f"UNLOCKED: {avatar_name} AVATAR"
+			self.reward_timer = 1.5
+
+	def accessory_action(self, accessory_index):
+		accessory_key = list(self.accessories)[accessory_index]
+		accessory_name, price = self.accessories[accessory_key]
+		if accessory_key in self.unlocked_accessories:
+			if accessory_key in self.selected_accessories:
+				self.selected_accessories.remove(accessory_key)
+			else:
+				self.selected_accessories.add(accessory_key)
+		elif self.total_coins >= price:
+			self.total_coins -= price
+			self.coins_collected = self.total_coins
+			self.unlocked_accessories.add(accessory_key)
+			self.selected_accessories.add(accessory_key)
+			self.reward_text = f"UNLOCKED: {accessory_name}"
+			self.reward_timer = 1.5
+
+	def key_up(self, event):
+		self.keys.discard(event.keysym.lower())
+
+	def go_home(self):
+		self.started = False
+		self.finished = False
+		self.shop_open = False
+		self.selected_level = self.current_level
+		self.mouse_locked = False
+		self.root.config(cursor="")
+		self.reset()
+
+	def start_or_jump(self, _event=None):
+		if not self.started or self.finished:
+			self.current_level = self.selected_level
+			self.reset()
+			self.started = True
+		elif self.player["grounded"]:
+			self.player["vy"] = -14
+			self.player["grounded"] = False
+			self.player["jumps"] = 1
+			self.jump_notice_timer = 0.45
+		elif "double_jump" in self.selected_accessories and self.player["jumps"] < 2:
+			self.player["vy"] = -14
+			self.player["jumps"] = 2
+			self.jump_notice_timer = 0.45
+
+	def mouse_down(self, event):
+		self.mouse_down_state = True
+		if self.finished:
+			if self.current_level < 5 and 18 <= event.x <= 250 and 500 <= event.y <= 570:
+				self.finish_action("next")
+			elif 425 <= event.x <= 675 and 500 <= event.y <= 570:
+				self.finish_action("replay")
+			elif 850 <= event.x <= 1080 and 500 <= event.y <= 570:
+				self.finish_action("home")
+			return
+		if self.started and WIDTH - 150 <= event.x <= WIDTH - 18 and 18 <= event.y <= 58:
+			self.go_home()
+			return
+		self.handle_touch(event.x, event.y, True)
+
+	def finish_action(self, action):
+		if action == "next" and self.current_level < 5:
+			self.current_level += 1
+			self.selected_level = self.current_level
+		elif action == "home":
+			self.go_home()
+			return
+		self.reset()
+		self.started = True
+
+	def mouse_up(self, event):
+		self.mouse_down_state = False
+		self.handle_touch(event.x, event.y, False)
+
+	def mouse_move(self, event):
+		if self.mouse_locked:
+			mouse_delta_y = event.y - self.last_mouse_y
+			self.look_y = max(-170, min(120, self.look_y - mouse_delta_y))
+			self.last_mouse_y = event.y
+		elif self.mouse_down_state:
+			self.handle_touch(event.x, event.y, True)
+
+	def handle_touch(self, x, y, pressed):
+		if not self.started or self.finished:
+			if pressed:
+				self.current_level = self.selected_level
+				self.reset()
+				self.started = True
+			return
+		controls = {"left": (60, 605, 140, 685), "right": (150, 605, 230, 685),
+					"dash": (780, 605, 890, 685), "jump": (910, 575, 1060, 685)}
+		hit = next((name for name, box in controls.items()
+					if box[0] <= x <= box[2] and box[1] <= y <= box[3]), None)
+		if pressed and hit:
+			if hit == "jump":
+				self.start_or_jump()
+			elif hit == "dash":
+				self.player["vx"] = 18 if self.player["vx"] >= 0 else -18
+			else:
+				self.touch_keys.add(hit)
+		elif not pressed:
+			self.touch_keys.difference_update(("left", "right"))
+
+	def down(self, *names):
+		return any(name in self.keys or name in self.touch_keys for name in names)
+
+	def update(self, dt):
+		if not self.started or self.finished or self.shop_open:
+			return
+		self.elapsed += dt
+		self.jump_notice_timer = max(0.0, self.jump_notice_timer - dt)
+		self.death_notice_timer = max(0.0, self.death_notice_timer - dt)
+		self.death_animation_timer = max(0.0, self.death_animation_timer - dt)
+		self.laser_immunity_timer = max(0.0, self.laser_immunity_timer - dt)
+		self.reward_timer = max(0.0, self.reward_timer - dt)
+		self.reward_speed_timer = max(0.0, self.reward_speed_timer - dt)
+		forward = self.down("w")
+		backward = self.down("s", "down")
+		move_right = self.down("d", "right")
+		move_left = self.down("a", "left")
+		if forward:
+			self.player["vx"] += 1.0
+		if backward:
+			self.player["vx"] -= 1.0
+		if move_right:
+			self.player["vx"] += 1.0
+		if move_left:
+			self.player["vx"] -= 1.0
+		if not forward and not backward and not move_right and not move_left:
+			self.player["vx"] *= 0.82
+		slide_combo = forward and self.down("c")
+		if slide_combo and not self.slide_combo_active:
+			self.slide_timer = 0.5
+		self.slide_combo_active = slide_combo
+		self.slide_timer = max(0.0, self.slide_timer - dt)
+		limit = 16 if self.slide_timer > 0 else 10
+		if self.reward_speed_timer > 0:
+			limit += 3
+		self.player["vx"] = max(-limit, min(limit, self.player["vx"]))
+		if self.down("space") and self.player["grounded"]:
+			self.start_or_jump()
+		old_x = self.player["x"]
+		old_bottom = self.player["y"] + self.player["h"]
+		gravity = 0.38 if "gravity" in self.selected_accessories else 0.65
+		self.player["vy"] = min(18, self.player["vy"] + gravity)
+		self.player["x"] += self.player["vx"]
+		self.player["y"] += self.player["vy"]
+		self.player["grounded"] = False
+		solid_blocks = self.platforms + [
+			(trap_x, GROUND_Y - 60, trap_width, 60)
+			for trap_x, trap_width in self.traps
+		]
+		for block_x, block_y, block_width, block_height in solid_blocks:
+			overlaps_x = (self.player["x"] + self.player["w"] > block_x and
+						  self.player["x"] < block_x + block_width)
+			overlaps_y = (self.player["y"] + self.player["h"] > block_y and
+						  self.player["y"] < block_y + block_height)
+			if not overlaps_x or not overlaps_y:
+				continue
+			if old_x + self.player["w"] <= block_x and self.player["x"] + self.player["w"] > block_x:
+				self.player["x"] = block_x - self.player["w"]
+				self.player["vx"] = 0
+			elif old_x >= block_x + block_width and self.player["x"] < block_x + block_width:
+				self.player["x"] = block_x + block_width
+				self.player["vx"] = 0
+		for px, py, pw, ph in self.platforms:
+			overlaps_x = self.player["x"] + self.player["w"] > px and self.player["x"] < px + pw
+			falling_onto = self.player["vy"] >= 0 and old_bottom <= py <= self.player["y"] + self.player["h"]
+			if overlaps_x and falling_onto:
+				self.player["y"] = py - self.player["h"]
+				self.player["vy"] = 0
+				self.player["grounded"] = True
+				self.player["jumps"] = 0
+				break
+		if self.player["grounded"]:
+			for checkpoint_x, checkpoint_y in self.checkpoints:
+				if checkpoint_x > self.checkpoint and self.player["x"] >= checkpoint_x:
+					self.checkpoint = checkpoint_x
+					self.checkpoint_y = checkpoint_y
+		for hazard_start, hazard_end in self.hazards:
+			on_hazard = (self.player["x"] + self.player["w"] > hazard_start and
+						 self.player["x"] < hazard_end)
+			if on_hazard and self.player["grounded"] and self.player["y"] + self.player["h"] >= GROUND_Y:
+				self.respawn_at_checkpoint()
+				break
+		for trap_x, trap_width in self.traps:
+			over_trap = (self.player["x"] + self.player["w"] > trap_x and
+						 self.player["x"] < trap_x + trap_width)
+			trap_top = GROUND_Y - 60
+			if over_trap and self.player["grounded"] and self.player["y"] + self.player["h"] > trap_top:
+				self.respawn_at_checkpoint()
+				break
+		for laser_x, laser_y, laser_radius in self.lasers:
+			laser_hit = (self.laser_immunity_timer <= 0 and
+						 self.player["x"] + self.player["w"] > laser_x - laser_radius and
+						 self.player["x"] < laser_x + laser_radius and
+						 self.player["y"] + self.player["h"] > laser_y - laser_radius and
+						 self.player["y"] < laser_y)
+			if laser_hit:
+				self.respawn_at_checkpoint("LASER HIT!  RESPAWNING AT CHECKPOINT")
+				break
+		if self.player["y"] > HEIGHT + 50:
+			self.respawn_at_checkpoint("SPIKED!  RESPAWNING AT CHECKPOINT")
+		remaining_coins = []
+		for coin_x, coin_y in self.coins:
+			coin_collected = (self.player["x"] + self.player["w"] > coin_x - 12 and
+							  self.player["x"] < coin_x + 12 and
+							  self.player["y"] + self.player["h"] > coin_y - 12 and
+							  self.player["y"] < coin_y + 12)
+			if coin_collected:
+				self.coins_collected += 1
+				self.total_coins += 1
+				if self.coins_collected % 5 == 0:
+					self.reward_speed_timer = 2.5
+					self.reward_timer = 1.2
+					self.reward_text = f"REWARD UNLOCKED!  SPEED BOOST x{self.coins_collected // 5}"
+			else:
+				remaining_coins.append((coin_x, coin_y))
+		self.coins = remaining_coins
+		if self.player["x"] >= self.finish_x:
+			self.finished = True
+		target_camera = max(0, self.player["x"] - 280)
+		self.camera_x += (target_camera - self.camera_x) * 0.12
+
+	def draw_background(self):
+		theme_level = self.selected_level if not self.started else self.current_level
+		if theme_level == 1:
+			for band in range(7):
+				colors = ["#241635", "#512044", "#8d3449", "#cf574d", "#ed8758", "#f6b66b", "#f7d28a"]
+				self.canvas.create_rectangle(0, band * 64, WIDTH, (band + 1) * 64,
+										fill=colors[band], outline="")
+			self.canvas.create_oval(755, 205, 895, 345, fill="#ffd98a", outline="")
+			self.canvas.create_rectangle(0, 448, WIDTH, HEIGHT, fill="#432742", outline="")
+			for cloud_x, cloud_y in [(125, 155), (440, 100), (850, 135)]:
+				self.canvas.create_oval(cloud_x, cloud_y, cloud_x + 100, cloud_y + 24,
+									fill="#e98b7b", outline="")
+			self.canvas.create_oval(cloud_x + 28, cloud_y - 14, cloud_x + 78, cloud_y + 25,
+								 fill="#e98b7b", outline="")
+		elif theme_level == 2:
+			self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#9c694e", outline="")
+			self.canvas.create_rectangle(0, 0, WIDTH, 230, fill="#4d7182", outline="")
+			self.canvas.create_rectangle(0, 230, WIDTH, 455, fill="#81513f", outline="")
+			self.canvas.create_polygon(0, 100, 170, 155, 240, 455, 0, 455,
+									 fill="#4b2c32", outline="#b66d4e", width=3)
+			self.canvas.create_polygon(WIDTH, 80, 930, 150, 850, 455, WIDTH, 455,
+									 fill="#573238", outline="#b66d4e", width=3)
+			for crack_y in (180, 270, 350):
+				self.canvas.create_line(72, crack_y, 145, crack_y + 20, 110, crack_y + 55,
+									fill="#d2835c", width=3)
+			self.canvas.create_oval(510, 300, 590, 380, fill="#e39a5e", outline="")
+			self.canvas.create_rectangle(0, 455, WIDTH, HEIGHT, fill="#3d2931", outline="")
+		elif theme_level == 3:
+			self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#111b2d", outline="")
+			self.canvas.create_rectangle(0, 380, WIDTH, HEIGHT, fill="#17233a", outline="")
+			for building_x, building_width, building_height in [(45, 100, 190), (210, 135, 260),
+													  (420, 120, 220), (650, 150, 285), (875, 110, 210)]:
+				x = building_x - (self.camera_x * 0.2 % 100)
+				self.canvas.create_rectangle(x, 380 - building_height, x + building_width, 380,
+													 fill="#263b59", outline="#4e7392", width=2)
+				for window_y in range(400 - building_height, 365, 32):
+					for window_x in range(int(x + 15), int(x + building_width - 10), 28):
+						self.canvas.create_rectangle(window_x, window_y, window_x + 8, window_y + 12,
+													 fill="#f4c96b", outline="")
+			self.canvas.create_line(0, 420, WIDTH, 420, fill="#57d6b5", width=2)
+		elif theme_level == 4:
+			self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#a8d7e8", outline="")
+			self.canvas.create_rectangle(0, 330, WIDTH, HEIGHT, fill="#5e9db5", outline="")
+			self.canvas.create_polygon(0, 0, 180, 0, 245, 430, 0, 430,
+									 fill="#d8f4fa", outline="#ffffff", width=3)
+			self.canvas.create_polygon(WIDTH, 0, 920, 0, 855, 430, WIDTH, 430,
+									 fill="#c4eaf2", outline="#ffffff", width=3)
+			for ice_x in range(80, WIDTH, 160):
+				self.canvas.create_line(ice_x, 90, ice_x + 30, 330,
+									fill="#eaffff", width=4)
+			self.canvas.create_rectangle(0, 450, WIDTH, HEIGHT, fill="#346b83", outline="")
+		else:
+			self.canvas.create_rectangle(0, 0, WIDTH, HEIGHT, fill="#080b20", outline="")
+			self.canvas.create_rectangle(0, 390, WIDTH, HEIGHT, fill="#141840", outline="")
+			for star_x, star_y in [(70, 110), (180, 215), (310, 80), (480, 150),
+									  (625, 95), (760, 240), (900, 125), (1020, 70)]:
+				self.canvas.create_oval(star_x, star_y, star_x + 4, star_y + 4,
+										fill="#d9c8ff", outline="")
+			self.canvas.create_oval(715, 115, 820, 220, fill="#bb8cff", outline="")
+			self.canvas.create_oval(735, 135, 820, 220, fill="#080b20", outline="")
+			for ring_y in (285, 325, 365):
+				self.canvas.create_line(0, ring_y, WIDTH, ring_y,
+									fill="#4c4aa0", width=2)
+
+	def draw_world(self):
+		self.canvas.delete("all")
+		self.draw_background()
+		for hx, end in self.hazards:
+			x = hx - self.camera_x
+			self.canvas.create_rectangle(x, GROUND_Y, end - self.camera_x, HEIGHT,
+									 fill="#d64b5d", outline="")
+			for spike in range(int(hx), int(end), 24):
+				sx = spike - self.camera_x
+				self.canvas.create_polygon(sx, GROUND_Y, sx + 12, GROUND_Y - 18,
+									   sx + 24, GROUND_Y, fill="#ff7180", outline="")
+		for px, py, pw, ph in self.platforms:
+			x = px - self.camera_x
+			if x + pw < 0 or x > WIDTH:
+				continue
+			self.canvas.create_rectangle(x, py, x + pw, py + ph,
+									 fill="#3c527b", outline="#8ca9d8", width=2)
+			self.canvas.create_rectangle(x, py, x + pw, py + 5, fill="#57d6b5", outline="")
+		for trap_x, trap_width in self.traps:
+			x = trap_x - self.camera_x
+			if x + trap_width < 0 or x > WIDTH:
+				continue
+			self.canvas.create_rectangle(x, GROUND_Y - 60, x + trap_width, GROUND_Y,
+									 fill="#9b4d32", outline="#e88d4f", width=2)
+			for spike_offset in (-16, 0, 16):
+				spike = x + trap_width / 2 + spike_offset
+				self.canvas.create_polygon(spike - 9, GROUND_Y - 60, spike,
+									   GROUND_Y - 82, spike + 9, GROUND_Y - 60,
+									   fill="#f5f3ce", outline="")
+		for laser_x, laser_y, laser_radius in self.lasers:
+			x = laser_x - self.camera_x
+			if x + laser_radius < 0 or x - laser_radius > WIDTH:
+				continue
+			self.canvas.create_arc(x - laser_radius, laser_y - laser_radius,
+								   x + laser_radius, laser_y + laser_radius,
+								   start=0, extent=180, style=tk.PIESLICE,
+								   fill="#e51f3f", outline="#ff7180", width=2)
+		for coin_x, coin_y in self.coins:
+			x = coin_x - self.camera_x
+			if -20 <= x <= WIDTH + 20:
+				self.canvas.create_oval(x - 11, coin_y - 11, x + 11, coin_y + 11,
+									fill="#f5b942", outline="#ffe59a", width=2)
+				self.canvas.create_oval(x - 4, coin_y - 8, x + 1, coin_y - 2,
+									fill="#fff4bf", outline="")
+		for checkpoint_x, checkpoint_y in self.checkpoints:
+			x = checkpoint_x - self.camera_x + 8
+			if -30 <= x <= WIDTH + 30:
+				self.canvas.create_line(x, checkpoint_y, x, checkpoint_y - 62,
+									 fill="#f5f3ce", width=4)
+				self.canvas.create_polygon(x, checkpoint_y - 60, x + 42,
+									 checkpoint_y - 47, x, checkpoint_y - 34,
+									 fill="#57d6b5" if checkpoint_x <= self.checkpoint else "#526783",
+									 outline="")
+		flag_x = self.finish_x - self.camera_x
+		self.canvas.create_line(flag_x, 600, flag_x, 405, fill="#f5f3ce", width=5)
+		self.canvas.create_polygon(flag_x, 410, flag_x + 95, 440, flag_x, 470,
+								   fill="#ffcb5c", outline="")
+		self.draw_player()
+		self.canvas.create_rectangle(WIDTH - 150, 18, WIDTH - 18, 58, fill="#284264",
+								 outline="#8ca9d8", width=2)
+		self.canvas.create_text(WIDTH - 84, 38, text="HOME",
+								fill="#ffffff", font=("Segoe UI", 12, "bold"))
+		if self.death_notice_timer > 0:
+			self.canvas.create_text(WIDTH // 2, 130, text=self.death_notice_text,
+								fill="#ff7180", font=("Segoe UI", 20, "bold"))
+		if self.jump_notice_timer > 0:
+			self.canvas.create_text(WIDTH // 2, 130, text="JUMP!",
+								fill="#ffcb5c", font=("Segoe UI", 28, "bold"))
+
+	def draw_player(self):
+		px = self.player["x"] - self.camera_x + 15
+		py = self.player["y"]
+		avatar_name, avatar_price, body_color, pants_color = self.avatars[self.selected_avatar]
+		if self.death_animation_timer > 0:
+			body_y = py + 34
+			self.canvas.create_oval(px - 23, body_y - 10, px - 3, body_y + 10,
+								fill="#f2b28d", outline="#412e3b", width=2)
+			self.canvas.create_line(px - 4, body_y, px + 28, body_y,
+							fill=body_color, width=16)
+			self.canvas.create_line(px + 8, body_y + 7, px - 8, body_y + 22,
+							fill=pants_color, width=7)
+			self.canvas.create_line(px + 20, body_y + 7, px + 36, body_y + 22,
+							fill=pants_color, width=7)
+			self.canvas.create_line(px + 2, body_y - 5, px - 12, body_y - 18,
+							fill="#f2b28d", width=6)
+			self.canvas.create_line(px + 28, body_y - 5, px + 42, body_y - 18,
+							fill="#f2b28d", width=6)
+			self.canvas.create_text(px + 8, body_y - 38, text="X",
+							fill="#ff7180", font=("Segoe UI", 18, "bold"))
+			return
+		walking = self.player["grounded"] and abs(self.player["vx"]) > 0.3
+		step = 6 if walking and int(self.elapsed * 10) % 2 == 0 else -6
+		jumping = not self.player["grounded"]
+		head_y = py + 8
+		self.canvas.create_oval(px - 12, head_y - 12, px + 12, head_y + 12,
+							fill="#f2b28d", outline="#412e3b", width=2)
+		self.canvas.create_arc(px - 12, head_y - 13, px + 12, head_y + 5,
+							start=0, extent=180, fill="#4b2f2b", outline="#2b2028", width=2)
+		self.canvas.create_oval(px - 5, head_y - 2, px - 3, head_y,
+							fill="#202437", outline="")
+		self.canvas.create_oval(px + 4, head_y - 2, px + 6, head_y,
+							fill="#202437", outline="")
+		self.canvas.create_line(px, head_y + 12, px, head_y + 18,
+							fill="#f2b28d", width=5)
+		self.canvas.create_rectangle(px - 13, py + 18, px + 13, py + 39,
+									fill=body_color, outline="#d9f1ff", width=2)
+		if jumping:
+			self.canvas.create_line(px - 11, py + 21, px - 25, py + 8,
+								 fill="#f2b28d", width=6)
+			self.canvas.create_line(px + 11, py + 21, px + 25, py + 8,
+								 fill="#f2b28d", width=6)
+		else:
+			self.canvas.create_line(px - 10, py + 22, px - 18, py + 37 + step,
+								 fill="#f2b28d", width=6)
+			self.canvas.create_line(px + 10, py + 22, px + 18, py + 37 - step,
+								 fill="#f2b28d", width=6)
+		self.canvas.create_line(px - 7, py + 39, px - 8 + step, py + 55,
+							 fill=pants_color, width=7)
+		self.canvas.create_line(px + 7, py + 39, px + 8 - step, py + 55,
+							 fill=pants_color, width=7)
+		self.canvas.create_line(px - 13 + step, py + 55, px - 3 + step, py + 55,
+							 fill="#f5f3ce", width=4)
+		self.canvas.create_line(px + 3 - step, py + 55, px + 13 - step, py + 55,
+							 fill="#f5f3ce", width=4)
+
+	def draw_controls(self):
+		buttons = [(100, 645, "<", "left"), (190, 645, ">", "right"),
+				   (835, 645, "DASH", "dash"), (985, 630, "JUMP", "jump")]
+		for cx, cy, label, name in buttons:
+			if name in ("left", "right"):
+				self.canvas.create_oval(cx - 35, cy - 35, cx + 35, cy + 35,
+										fill="#284264", outline="#8ca9d8", width=2)
+			else:
+				self.canvas.create_rectangle(cx - 52, cy - 30, cx + 52, cy + 30,
+											 fill="#284264", outline="#8ca9d8", width=2)
+			self.canvas.create_text(cx, cy, text=label, fill="#ffffff",
+									font=("Segoe UI", 12, "bold"))
+
+	def draw_hud(self):
+		self.canvas.create_text(28, 26, anchor="w", text="SPLIT SECOND",
+								fill="#ffffff", font=("Segoe UI", 20, "bold"))
+		self.canvas.create_text(28, 55, anchor="w",
+								text=f"LEVEL {self.current_level}: {self.level_names[self.current_level]}   TIME {self.elapsed:05.1f}   CHECKPOINT {int(self.checkpoint)}   COINS {self.total_coins}",
+								fill="#9bb7d9", font=("Segoe UI", 11, "bold"))
+		self.canvas.create_text(WIDTH - 28, 28, anchor="e",
+								text="W forward   S back   A left   D right + dash   SPACE jump   W+C slide   T mouse lock",
+								fill="#9bb7d9", font=("Segoe UI", 10))
+		if self.player["grounded"]:
+			self.canvas.create_text(WIDTH // 2, 70, text="SPACE  TO  JUMP",
+								fill="#ffffff", font=("Segoe UI", 13, "bold"))
+		if self.reward_timer > 0:
+			self.canvas.create_text(WIDTH // 2, 160, text=self.reward_text,
+								fill="#ffdf75", font=("Segoe UI", 22, "bold"))
+
+	def draw_shop(self):
+		self.canvas.create_rectangle(100, 55, WIDTH - 100, 650,
+							 fill="#182641", outline="#57d6b5", width=3)
+		self.canvas.create_text(WIDTH // 2, 95, text="AVATAR SHOP",
+							fill="#ffffff", font=("Segoe UI", 28, "bold"))
+		self.canvas.create_text(WIDTH // 2, 130,
+							text=f"COINS: {self.total_coins}    Press B to close",
+							fill="#ffdf75", font=("Segoe UI", 14, "bold"))
+		for avatar_index, avatar_key in enumerate(self.avatars):
+			avatar_name, price, body_color, pants_color = self.avatars[avatar_key]
+			x = 250 + avatar_index * 200
+			unlocked = avatar_key in self.unlocked_avatars
+			self.canvas.create_rectangle(x - 75, 165, x + 75, 390,
+									 fill="#243957" if avatar_key != self.selected_avatar else "#315b67",
+									 outline="#ffdf75" if avatar_key == self.selected_avatar else "#526783",
+									 width=3)
+			self.canvas.create_oval(x - 20, 195, x + 20, 235, fill="#f2b28d", outline="#412e3b", width=2)
+			self.canvas.create_rectangle(x - 22, 233, x + 22, 275, fill=body_color, outline="")
+			self.canvas.create_line(x - 12, 275, x - 16, 325, fill=pants_color, width=9)
+			self.canvas.create_line(x + 12, 275, x + 16, 325, fill=pants_color, width=9)
+			self.canvas.create_text(x, 350, text=f"{avatar_index + 1}. {avatar_name}",
+								fill="#ffffff", font=("Segoe UI", 12, "bold"))
+			status = "EQUIPPED" if avatar_key == self.selected_avatar else "OWNED" if unlocked else f"{price} COINS"
+			self.canvas.create_text(x, 375, text=status, fill="#57d6b5" if unlocked else "#ffcb5c",
+								font=("Segoe UI", 10, "bold"))
+		for accessory_index, accessory_key in enumerate(self.accessories):
+			accessory_name, price = self.accessories[accessory_key]
+			x = 390 + accessory_index * 320
+			owned = accessory_key in self.unlocked_accessories
+			equipped = accessory_key in self.selected_accessories
+			self.canvas.create_rectangle(x - 135, 445, x + 135, 570,
+									 fill="#315b67" if equipped else "#243957",
+									 outline="#57d6b5" if equipped else "#526783", width=3)
+			self.canvas.create_oval(x - 28, 470, x + 28, 526,
+									 fill="#ffdf75", outline="#fff4bf", width=2)
+			self.canvas.create_text(x, 498, text="JUMP" if accessory_key == "double_jump" else "LOW G",
+								fill="#6b4326", font=("Segoe UI", 9, "bold"))
+			self.canvas.create_text(x, 540, text=f"{accessory_index + 5}. {accessory_name}",
+								fill="#ffffff", font=("Segoe UI", 11, "bold"))
+			status = "EQUIPPED" if equipped else "OWNED" if owned else f"{price} COINS"
+			self.canvas.create_text(x, 560, text=status,
+								fill="#57d6b5" if owned else "#ffcb5c",
+								font=("Segoe UI", 10, "bold"))
+		self.canvas.create_text(WIDTH // 2, 615,
+							text="1-4: avatars    5-6: buy/equip accessories",
+							fill="#c5d5ed", font=("Segoe UI", 13))
+
+	def draw_welcome(self):
+		self.canvas.delete("all")
+		self.draw_background()
+		self.canvas.create_rectangle(105, 105, WIDTH - 105, 505,
+									 fill="#182641", outline="#57d6b5", width=3)
+		self.canvas.create_text(WIDTH // 2, 190, text="WELCOME TO",
+								fill="#57d6b5", font=("Segoe UI", 20, "bold"))
+		self.canvas.create_text(WIDTH // 2, 255, text="SPLIT SECOND",
+								fill="#ffffff", font=("Segoe UI", 46, "bold"))
+		self.canvas.create_text(WIDTH // 2, 335,
+								text="A parkour race against gravity",
+								fill="#c5d5ed", font=("Segoe UI", 17))
+		self.canvas.create_text(WIDTH // 2, 410,
+								text="Press SPACE or click to start",
+								fill="#ffcb5c", font=("Segoe UI", 16, "bold"))
+		self.canvas.create_text(WIDTH // 2, 465,
+								text=f"<  LEVEL {self.selected_level}: {self.level_names[self.selected_level]}  >    Use LEFT / RIGHT arrows to choose",
+								fill="#ffffff", font=("Segoe UI", 13, "bold"))
+		self.canvas.create_text(WIDTH // 2, 535,
+								text=f"AVATAR SHOP    COINS: {self.total_coins}",
+								fill="#57d6b5", font=("Segoe UI", 16, "bold"))
+		self.canvas.create_text(WIDTH // 2, 510,
+								text="ACCESSORIES: 5 DOUBLE JUMP SHOES (100)   6 GRAVITY SHOES (150)",
+								fill="#ffdf75", font=("Segoe UI", 10, "bold"))
+		for avatar_index, avatar_key in enumerate(self.avatars):
+			avatar_name, price, body_color, pants_color = self.avatars[avatar_key]
+			x = 250 + avatar_index * 200
+			status = "OWNED" if avatar_key in self.unlocked_avatars else f"{price} coins"
+			self.canvas.create_rectangle(x - 75, 555, x + 75, 650,
+									 fill="#315b67" if avatar_key == self.selected_avatar else "#243957",
+									 outline="#ffdf75" if avatar_key == self.selected_avatar else "#526783",
+									 width=2)
+			self.canvas.create_oval(x - 12, 565, x + 12, 589, fill="#f2b28d", outline="")
+			self.canvas.create_rectangle(x - 13, 588, x + 13, 612, fill=body_color, outline="")
+			self.canvas.create_text(x, 625, text=f"{avatar_index + 1}. {avatar_name}",
+								fill="#ffffff", font=("Segoe UI", 10, "bold"))
+			self.canvas.create_text(x, 642, text=status, fill="#ffdf75", font=("Segoe UI", 9))
+
+	def draw(self):
+		if not self.started:
+			self.draw_welcome()
+			return
+		self.draw_world()
+		self.draw_hud()
+		self.draw_controls()
+		if self.shop_open:
+			self.draw_shop()
+		if self.finished:
+			self.canvas.create_rectangle(180, 175, 920, 590, fill="#182641",
+										 outline="#ffcb5c", width=3)
+			self.canvas.create_text(WIDTH // 2, 235, text="COURSE CLEARED",
+									fill="#ffcb5c", font=("Segoe UI", 30, "bold"))
+			self.canvas.create_text(WIDTH // 2, 285,
+									text=f"Time: {self.elapsed:.1f} seconds",
+									fill="#ffffff", font=("Segoe UI", 18))
+			if self.current_level < 5:
+				self.canvas.create_rectangle(18, 500, 250, 570, fill="#315b67",
+										 outline="#57d6b5", width=2)
+				self.canvas.create_text(134, 535, text="NEXT LEVEL",
+									fill="#ffffff", font=("Segoe UI", 13, "bold"))
+			self.canvas.create_text(134, 557,
+									text=self.level_names[self.current_level + 1],
+									fill="#9bb7d9", font=("Segoe UI", 9))
+			self.canvas.create_rectangle(425, 500, 675, 570, fill="#315b67",
+									 outline="#ffcb5c", width=3)
+			self.canvas.create_text(550, 535, text="PLAY AGAIN",
+									fill="#ffffff", font=("Segoe UI", 13, "bold"))
+			self.canvas.create_rectangle(850, 500, 1080, 570, fill="#315b67",
+									 outline="#8ca9d8", width=2)
+			self.canvas.create_text(965, 535, text="HOME",
+									fill="#ffffff", font=("Segoe UI", 13, "bold"))
+
+	def loop(self):
+		now = self.root.tk.call("clock", "milliseconds") / 1000
+		dt = min(0.04, now - self.last_time) if self.last_time else 0.016
+		self.last_time = now
+		self.update(dt)
+		self.draw()
+		self.root.after(16, self.loop)
+
+
+if __name__ == "__main__":
+	SplitSecond().root.mainloop()
